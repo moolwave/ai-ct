@@ -6,11 +6,12 @@ import { CertificateView } from "@/components/certificate-view";
 import { QuestionsTab } from "@/components/questions-tab";
 import { ReviewBench, type ReviewItem } from "@/components/review-bench";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { collectionLabel, documentTitle } from "@/lib/labels";
-import { auditChain } from "@/lib/project";
-import { summarize } from "@/lib/summary";
+import { auditChainCached as auditChain } from "@/lib/project";
+import { summarizeCached as summarize } from "@/lib/summary";
 import { findProject, readStore } from "@/lib/store";
-import { cn } from "cn";
+import { cn } from "@/lib/utils";
 
 const tabs = [
   ["questions", "질문셋"],
@@ -33,8 +34,10 @@ export default async function ProjectPage({
   const summary = summarize(project);
   const chain = auditChain(project);
   const active = tabs.some((item) => item[0] === tab) ? tab : "questions";
+  // 답변마다 질문 배열을 다시 훑지 않도록 한 번만 Map으로 만듭니다.
+  const questionById = new Map(project.questions.map((question) => [question.id, question]));
   const items: ReviewItem[] = project.cases.flatMap((item) => {
-    const question = project.questions.find((entry) => entry.id === item.questionId);
+    const question = questionById.get(item.questionId);
     if (!question) return [];
     return [
       {
@@ -71,8 +74,12 @@ export default async function ProjectPage({
         </div>
         <details className="text-sm">
           <summary className="cursor-pointer text-muted-foreground">검수 삭제</summary>
-          <form action={deleteProjectAction} className="mt-2">
+          <form action={deleteProjectAction} className="mt-2 flex w-64 flex-col gap-2">
             <input type="hidden" name="projectId" value={project.id} />
+            <label className="text-xs text-muted-foreground" htmlFor="confirmName">
+              지우려면 검수 이름을 똑같이 입력하세요. 되돌릴 수 없습니다.
+            </label>
+            <Input id="confirmName" name="confirmName" placeholder={project.name} autoComplete="off" required />
             <Button type="submit" variant="destructive" size="sm">
               이 검수와 확인서 해시를 지움
             </Button>
@@ -108,6 +115,7 @@ export default async function ProjectPage({
           questionCount={project.questions.length}
           machineHits={summary.machineHits}
           needsConfirm={project.events.length > 0 || project.reports.length > 0}
+          missingAnswerIds={summary.missingAnswerIds}
         />
       ) : null}
       {active === "review" ? <ReviewBench projectId={project.id} items={items} /> : null}

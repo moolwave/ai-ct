@@ -64,20 +64,35 @@ export type Case = {
   recommendation: string;
   reviewedAt: string | null;
   reviewer: string;
+  /** 이 답변이 들어온 답변 파일. 없으면 첫 답변 파일(project.batch)입니다. */
+  batchId?: string;
+};
+
+/** 사람 판정 이벤트. 기존 체인과 해시가 같도록 필드를 바꾸지 않습니다. */
+export type VerdictPayload = {
+  caseId: string;
+  at: string;
+  reviewer: string;
+  reason: string;
+  prev: VerdictSnapshot;
+  next: VerdictSnapshot;
+};
+
+/** 답변 파일을 가져온 뒤 추가한 문항의 답변을 붙인 이벤트. */
+export type SupplementPayload = {
+  kind: "supplement";
+  at: string;
+  reviewer: string;
+  reason: string;
+  batch: { id: string; filename: string; sha256: string; rowCount: number };
+  caseIds: string[];
 };
 
 export type ReviewEvent = {
   id: string;
   prevHash: string;
   eventHash: string;
-  payload: {
-    caseId: string;
-    at: string;
-    reviewer: string;
-    reason: string;
-    prev: VerdictSnapshot;
-    next: VerdictSnapshot;
-  };
+  payload: VerdictPayload | SupplementPayload;
 };
 
 export type Report = {
@@ -89,6 +104,8 @@ export type Report = {
   critical: number;
   reviewed: number;
   unreviewed: number;
+  /** 확정 시점 질문셋의 해시. 이전 버전에서 만든 확인서에는 없습니다. */
+  questionsSha256?: string;
 };
 
 export type Project = {
@@ -104,6 +121,8 @@ export type Project = {
   createdAt: string;
   questions: Question[];
   batch: ImportBatch | null;
+  /** 추가 문항용 답변 파일. 이전 버전 저장소에는 없습니다. */
+  supplements?: ImportBatch[];
   cases: Case[];
   events: ReviewEvent[];
   reports: Report[];
@@ -150,6 +169,9 @@ export type Summary = {
   holdoutErrors: number;
   holdoutReviewed: number;
   machineHits: number;
+  criticalDomainTotal: number;
+  criticalDomainErrors: number;
+  criticalDomainOpen: number;
 };
 
 export type StoreData = {

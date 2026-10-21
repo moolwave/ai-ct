@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { CertificateView } from "@/components/certificate-view";
-import { auditChain } from "@/lib/project";
-import { summarize } from "@/lib/summary";
+import { auditChainCached as auditChain } from "@/lib/project";
+import { summarizeCached as summarize } from "@/lib/summary";
 import { findProject, readStore } from "@/lib/store";
 
 export default async function CertificatePage({

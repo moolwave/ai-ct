@@ -4,10 +4,11 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { saveVerdictAction } from "@/lib/actions";
 import { verdictLabel } from "@/lib/labels";
+import { hasMachineHit } from "@/lib/rules";
 import type { HumanVerdict, Severity } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { cn } from "cn";
+import { cn } from "@/lib/utils";
 
 export type ReviewItem = {
   caseId: string;
@@ -41,6 +42,14 @@ const filters: Array<{ id: Filter; label: string }> = [
   { id: "all", label: "전체" },
 ];
 
+// 필터 목록과 개수 배지가 같은 기준을 쓰도록 한 곳에 둡니다(예전에는 두 군데에 복사돼 있었음).
+function matches(filter: Filter, item: ReviewItem): boolean {
+  if (filter === "open") return !item.humanVerdict;
+  if (filter === "hit") return hasMachineHit(item.findings);
+  if (filter === "critical") return item.criticalDomain;
+  return true;
+}
+
 export function ReviewBench({
   projectId,
   items,
@@ -49,17 +58,15 @@ export function ReviewBench({
   items: ReviewItem[];
 }) {
   const [filter, setFilter] = useState<Filter>(items.some((item) => !item.humanVerdict) ? "open" : "all");
-  const visible = useMemo(() => {
-    return items
-      .filter((item) => {
-        if (filter === "open") return !item.humanVerdict;
-        if (filter === "hit") return item.findings.some((finding) => finding.kind === "hit");
-        if (filter === "critical") return item.criticalDomain;
-        return true;
-      })
-      .slice()
-      .sort((a, b) => rank(a) - rank(b));
-  }, [filter, items]);
+  const visible = useMemo(
+    () => items.filter((item) => matches(filter, item)).sort((a, b) => rank(a) - rank(b)),
+    [filter, items],
+  );
+  // 배지 숫자는 items가 바뀔 때만 다시 셉니다. 예전에는 입력할 때마다 필터 4개 × 전체 문항을 다시 셌습니다.
+  const counts = useMemo(
+    () => Object.fromEntries(filters.map((item) => [item.id, items.filter((row) => matches(item.id, row)).length])) as Record<Filter, number>,
+    [items],
+  );
 
   return (
     <div className="flex flex-col gap-5">
@@ -79,14 +86,7 @@ export function ReviewBench({
             onClick={() => setFilter(item.id)}
           >
             {item.label}
-            <span className="text-xs opacity-70">
-              {items.filter((row) => {
-                if (item.id === "open") return !row.humanVerdict;
-                if (item.id === "hit") return row.findings.some((finding) => finding.kind === "hit");
-                if (item.id === "critical") return row.criticalDomain;
-                return true;
-              }).length}
-            </span>
+            <span className="text-xs opacity-70">{counts[item.id]}</span>
           </Button>
         ))}
       </div>
@@ -112,7 +112,7 @@ export function ReviewBench({
 
 function rank(item: ReviewItem): number {
   const open = item.humanVerdict ? 1 : 0;
-  const hit = item.findings.some((finding) => finding.kind === "hit") ? 0 : 1;
+  const hit = hasMachineHit(item.findings) ? 0 : 1;
   const critical = item.criticalDomain ? 0 : 1;
   return open * 4 + hit * 2 + critical;
 }
@@ -153,8 +153,8 @@ function CaseCard({ projectId, item }: { projectId: string; item: ReviewItem }) 
           <p className="mt-1 whitespace-pre-wrap text-sm">{item.answer}</p>
           {hits.length > 0 ? (
             <ul className="mt-3 flex flex-col gap-2">
-              {hits.map((finding) => (
-                <li key={`${finding.ruleId}-${finding.summary}`} className="rounded-lg bg-secondary px-3 py-2 text-sm">
+              {hits.map((finding, index) => (
+                <li key={`${finding.ruleId}-${index}`} className="rounded-lg bg-secondary px-3 py-2 text-sm">
                   <span className="block text-xs text-muted-foreground">규칙에 걸림 · {finding.ruleId}</span>
                   {finding.summary}
                 </li>
@@ -163,8 +163,8 @@ function CaseCard({ projectId, item }: { projectId: string; item: ReviewItem }) 
           ) : (
             <p className="mt-3 text-xs text-muted-foreground">자동 검사에는 걸리지 않았습니다. 이것만으로 통과는 아닙니다.</p>
           )}
-          {info.map((finding) => (
-            <p key={finding.ruleId} className="mt-2 text-sm text-pending">
+          {info.map((finding, index) => (
+            <p key={`${finding.ruleId}-${index}`} className="mt-2 text-sm text-pending">
               {finding.summary}
             </p>
           ))}

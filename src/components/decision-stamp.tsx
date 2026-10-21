@@ -1,6 +1,6 @@
 import { decisionLabel } from "@/lib/labels";
 import type { Decision } from "@/lib/types";
-import { cn } from "cn";
+import { cn } from "@/lib/utils";
 
 export function DecisionStamp({ decision }: { decision: Decision }) {
   return (

@@ -13,9 +13,10 @@ import {
   documentTitle,
   severityLabel,
 } from "@/lib/labels";
-import type { ChainAudit, Project, Summary } from "@/lib/types";
+import { isSupplementPayload, questionsHash } from "@/lib/project";
+import type { ChainAudit, Project, ReviewEvent, Summary } from "@/lib/types";
 import { buttonVariants } from "@/components/ui/button";
-import { cn } from "cn";
+import { cn } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -37,10 +38,19 @@ export function CertificateView({
   printable?: boolean;
 }) {
   const latest = project.reports.at(-1) ?? null;
-  const aligned = Boolean(latest && chain.ok && latest.finalHash === chain.liveHash);
   const holdoutCaseIds = new Set(
     project.questions.filter((question) => question.holdout).map((question) => `case_${question.id}`),
   );
+  // 확정 뒤 질문셋(홀드아웃·중대 도메인 표시, 필수 표현 등)이 바뀌면 같은 판정이라도 결론이 달라질 수 있습니다.
+  const questionsChanged = Boolean(
+    latest?.questionsSha256 && latest.questionsSha256 !== questionsHash(project.questions),
+  );
+  const aligned = Boolean(latest && chain.ok && latest.finalHash === chain.liveHash && !questionsChanged);
+  const eventLabel = (event: ReviewEvent) => {
+    if (isSupplementPayload(event.payload)) return `${event.payload.reason} · ${event.payload.batch.filename}`;
+    const target = holdoutCaseIds.has(event.payload.caseId) ? "비공개 홀드아웃" : event.payload.caseId;
+    return `${event.payload.reason} · ${target}`;
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -95,6 +105,21 @@ export function CertificateView({
           <Stat value={String(summary.unreviewed + summary.missingAnswerIds.length)} label="미검토·답변 없음" />
           <Stat value={`${summary.holds}/${summary.unsettled}`} label="보류 / 기준 불명" />
         </div>
+        {summary.criticalDomainTotal > 0 ? (
+          <p className="mt-4 text-sm">
+            중대 도메인 {summary.criticalDomainTotal}문항 · 오류 {summary.criticalDomainErrors}건 · 미판정·보류{" "}
+            {summary.criticalDomainOpen}건
+            {summary.criticalDomainOpen > 0 ? (
+              <span className="text-destructive"> · 중대 도메인에 결론이 안 난 문항이 있습니다.</span>
+            ) : null}
+          </p>
+        ) : null}
+        {(project.supplements?.length ?? 0) > 0 ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            추가 답변 파일 {project.supplements!.length}개:{" "}
+            {project.supplements!.map((item) => `${item.filename}(${item.rowCount}행)`).join(", ")}. 각 파일 해시는 판정 체인에 들어 있습니다.
+          </p>
+        ) : null}
         <p className="mt-3 text-xs text-muted-foreground">
           참고 통과율 {formatPercent(summary.passRate)}. 정상만 분자로 두고, 분모는 정상과 오류입니다. 보류, 기준 불명, 미검토는 통과율에 넣지 않습니다. 규칙에 걸린 문항은 {summary.machineHits}개입니다.
         </p>
@@ -163,6 +188,7 @@ export function CertificateView({
               : `체인이 깨졌습니다. 깨진 지점: ${chain.brokenAt ?? "알 수 없음"}`}
           </p>
           <p className="mt-3 text-sm">
+            {questionsChanged ? "마지막 확정 이후 질문셋이 바뀌었습니다. 다시 확정하세요. " : ""}
             {aligned
               ? `마지막 확정(${formatWhen(latest!.issuedAt)})과 현재 판정이 같습니다.`
               : latest
@@ -191,20 +217,15 @@ export function CertificateView({
           <summary className="cursor-pointer text-muted-foreground">판정 해시 체인 {project.events.length}건</summary>
           <ol className="mt-3 flex flex-col gap-2">
             {project.events.map((event, index) => (
-              <li
-                key={holdoutCaseIds.has(event.payload.caseId) ? event.eventHash : event.id}
-                className="font-mono text-xs"
-              >
-                {index + 1}. {event.payload.reason} ·{" "}
-                {holdoutCaseIds.has(event.payload.caseId) ? "비공개 홀드아웃" : event.payload.caseId} ·{" "}
-                {event.eventHash.slice(0, 16)}
+              <li key={event.eventHash} className="font-mono text-xs">
+                {index + 1}. {eventLabel(event)} · {event.eventHash.slice(0, 16)}
               </li>
             ))}
           </ol>
         </details>
       </article>
 
-      <IssueBar projectId={project.id} canIssue={Boolean(project.batch) && project.cases.length > 0} aligned={aligned} />
+      <IssueBar projectId={project.id} canIssue={Boolean(project.batch) && project.cases.length > 0 && chain.ok} aligned={aligned} />
       <p className="no-print text-sm">
         <Link className="underline" href={`/verify?project=${project.id}`}>
           해시 검증 화면에서 이 검수를 대조

@@ -1,8 +1,14 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { addQuestionAction, importQuestionsAction, loadSampleQuestionsAction } from "@/lib/actions";
+import {
+  addQuestionAction,
+  importQuestionsAction,
+  loadSampleQuestionsAction,
+  type ActionResult,
+  type QuestionInput,
+} from "@/lib/actions";
 import type { Question } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,16 +30,18 @@ export function QuestionsTab({
   const [warnings, setWarnings] = useState<string[]>([]);
   const [csv, setCsv] = useState("");
 
-  function run(work: () => Promise<{ ok: boolean; message?: string; warnings?: string[] }>) {
+  // 성공했을 때만 onSuccess를 부릅니다. 예전에는 문항 하나를 추가해도 옆의 CSV 입력이 지워졌고,
+  // 문항 폼은 서버 응답 전에 비워져 오류가 나면 입력이 사라졌습니다.
+  function run(work: () => Promise<ActionResult>, onSuccess?: () => void) {
     setMessage(null);
     start(async () => {
       const result = await work();
       if (!result.ok) {
-        setMessage(result.message ?? "처리하지 못했습니다.");
+        setMessage(result.message);
         return;
       }
       setWarnings(result.warnings ?? []);
-      setCsv("");
+      onSuccess?.();
       router.refresh();
     });
   }
@@ -58,8 +66,8 @@ export function QuestionsTab({
       {message ? <p className="text-sm text-destructive">{message}</p> : null}
       {warnings.length > 0 ? (
         <ul className="list-disc pl-5 text-sm text-muted-foreground">
-          {warnings.map((warning) => (
-            <li key={warning}>{warning}</li>
+          {warnings.map((warning, index) => (
+            <li key={`${index}-${warning}`}>{warning}</li>
           ))}
         </ul>
       ) : null}
@@ -151,14 +159,23 @@ export function QuestionsTab({
             onChange={async (event) => {
               const file = event.target.files?.[0];
               if (!file) return;
-              setCsv(await file.text());
+              if (file.size > 500_000) {
+                setMessage("파일이 큽니다. 500KB 이하의 CSV만 가져옵니다.");
+                event.target.value = "";
+                return;
+              }
+              try {
+                setCsv(await file.text());
+              } catch {
+                setMessage("파일을 읽지 못했습니다. UTF-8 CSV인지 확인하세요.");
+              }
             }}
           />
           <Button
             className="mt-3"
             type="button"
             disabled={locked || pending || csv.trim() === ""}
-            onClick={() => run(() => importQuestionsAction(projectId, csv))}
+            onClick={() => run(() => importQuestionsAction(projectId, csv), () => setCsv(""))}
           >
             질문셋 가져오기
           </Button>
@@ -173,7 +190,7 @@ export function QuestionsTab({
 
         <QuestionForm
           disabled={pending}
-          onSubmit={(input) => run(() => addQuestionAction(projectId, input))}
+          onSubmit={(input, reset) => run(() => addQuestionAction(projectId, input), reset)}
         />
       </div>
     </div>
@@ -185,24 +202,13 @@ function QuestionForm({
   onSubmit,
 }: {
   disabled: boolean;
-  onSubmit: (input: {
-    id: string;
-    text: string;
-    referenceAnswer: string;
-    sourceNote: string;
-    sourceConflict: boolean;
-    mustInclude: string;
-    mustNotInclude: string;
-    slotType: string;
-    slotValue: string;
-    domain: string;
-    holdout: boolean;
-    criticalDomain: boolean;
-  }) => void;
+  onSubmit: (input: QuestionInput, reset: () => void) => void;
 }) {
   const [slotType, setSlotType] = useState("none");
+  const formRef = useRef<HTMLFormElement>(null);
   return (
     <form
+      ref={formRef}
       className="rounded-xl border border-border bg-card p-4"
       onSubmit={(event) => {
         event.preventDefault();
@@ -220,9 +226,10 @@ function QuestionForm({
           domain: String(form.get("domain") ?? ""),
           holdout: form.get("holdout") === "on",
           criticalDomain: form.get("criticalDomain") === "on",
+        }, () => {
+          formRef.current?.reset();
+          setSlotType("none");
         });
-        event.currentTarget.reset();
-        setSlotType("none");
       }}
     >
       <h3 className="font-medium">문항 하나 추가</h3>

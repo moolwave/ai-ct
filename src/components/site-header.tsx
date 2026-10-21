@@ -2,14 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { cn } from "cn";
+import { logoutAction } from "@/lib/actions";
+import { cn } from "@/lib/utils";
 
 const links = [
   { href: "/", label: "검수" },
   { href: "/verify", label: "해시 검증" },
+  { href: "/errors", label: "에러 로그" },
 ];
 
-export function SiteHeader() {
+export function SiteHeader({ authEnabled }: { authEnabled: boolean }) {
   const pathname = usePathname();
   return (
     <header className="no-print border-b border-border bg-card">
@@ -34,6 +36,13 @@ export function SiteHeader() {
               </Link>
             );
           })}
+          {authEnabled ? (
+            <form action={logoutAction}>
+              <button type="submit" className="rounded-md px-2.5 py-1 text-muted-foreground hover:text-foreground">
+                로그아웃
+              </button>
+            </form>
+          ) : null}
         </nav>
       </div>
     </header>

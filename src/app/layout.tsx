@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Noto_Sans_KR, Noto_Serif_KR } from "next/font/google";
 import { SiteHeader } from "@/components/site-header";
+import { configuredToken } from "@/lib/session";
 import "./globals.css";
 
 const sans = Noto_Sans_KR({
@@ -34,7 +35,7 @@ export default function RootLayout({
     <html lang="ko" className={`${sans.variable} ${serif.variable}`}>
       <body className="antialiased">
         <div className="flex min-h-screen flex-col">
-          <SiteHeader />
+          <SiteHeader authEnabled={Boolean(configuredToken())} />
           <div className="flex-1">{children}</div>
           <footer className="no-print border-t border-border px-4 py-6 text-center text-xs text-muted-foreground">
             확인서는 인증이 아닙니다. ai ct는 외부 API를 호출하지 않고, 검수

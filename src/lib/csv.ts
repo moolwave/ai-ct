@@ -1,3 +1,4 @@
+import { LIMITS, cleanId, cleanText, isUserError } from "./errors";
 import type { Question, SlotType } from "./types";
 
 export function parseCsv(text: string): string[][] {
@@ -52,18 +53,20 @@ export function csvEscape(value: string): string {
   return value;
 }
 
-function splitList(value: string): string[] {
+/** "7일|주문번호" 같은 목록. 화면 입력과 CSV가 같은 함수를 씁니다. */
+export function splitList(value: string): string[] {
   return value
     .split("|")
-    .map((item) => item.trim())
-    .filter(Boolean);
+    .map((item) => cleanText(item, LIMITS.shortText))
+    .filter(Boolean)
+    .slice(0, 50);
 }
 
-function asBool(value: string): boolean {
+export function asBool(value: string): boolean {
   return ["true", "1", "yes", "y", "예"].includes(value.trim().toLowerCase());
 }
 
-function asSlot(value: string): SlotType {
+export function asSlot(value: string): SlotType {
   if (value === "amount" || value === "date") return value;
   return "none";
 }
@@ -128,14 +131,22 @@ export function parseQuestionsCsv(text: string): {
   const questions: Question[] = [];
   const errors: string[] = [];
   const seen = new Set<string>();
+  let overflowReported = false;
 
   table.slice(1).forEach((cells, rowIndex) => {
     const read = (name: (typeof QUESTION_HEADERS)[number]) =>
       (cells[index.get(name) ?? -1] ?? "").trim();
-    const id = read("id");
     const line = rowIndex + 2;
-    if (!id) {
-      errors.push(`${line}행에 문항 id가 없습니다.`);
+    if (questions.length >= LIMITS.questions) {
+      if (!overflowReported) errors.push(`문항은 ${LIMITS.questions}개까지 읽습니다. ${line}행부터 건너뜁니다.`);
+      overflowReported = true;
+      return;
+    }
+    let id: string;
+    try {
+      id = cleanId(read("id"), `${line}행 문항 id`);
+    } catch (error) {
+      errors.push(isUserError(error) ? error.message : `${line}행 문항 id를 읽지 못했습니다.`);
       return;
     }
     if (seen.has(id)) {
@@ -143,7 +154,7 @@ export function parseQuestionsCsv(text: string): {
       return;
     }
     seen.add(id);
-    const textValue = read("question");
+    const textValue = cleanText(read("question"), LIMITS.longText);
     if (!textValue) {
       errors.push(`${id}: 질문 본문이 비어 있습니다.`);
       return;
@@ -151,14 +162,14 @@ export function parseQuestionsCsv(text: string): {
     questions.push({
       id,
       text: textValue,
-      referenceAnswer: read("reference_answer"),
-      sourceNote: read("source_note"),
+      referenceAnswer: cleanText(read("reference_answer"), LIMITS.longText),
+      sourceNote: cleanText(read("source_note"), LIMITS.shortText * 2),
       sourceConflict: asBool(read("source_conflict")),
       mustInclude: splitList(read("must_include")),
       mustNotInclude: splitList(read("must_not_include")),
       slotType: asSlot(read("slot_type")),
-      slotValue: read("slot_value"),
-      domain: read("domain") || "기타",
+      slotValue: cleanText(read("slot_value"), LIMITS.shortText),
+      domain: cleanText(read("domain"), LIMITS.shortText) || "기타",
       holdout: asBool(read("holdout")),
       criticalDomain: asBool(read("critical_domain")),
     });
@@ -201,7 +212,7 @@ export function parseAnswersCsv(text: string): {
   const seen = new Set<string>();
   table.slice(1).forEach((cells, rowIndex) => {
     const questionId = (cells[idIndex] ?? "").trim();
-    const answer = cells[answerIndex] ?? "";
+    const answer = (cells[answerIndex] ?? "").normalize("NFC");
     if (!questionId) {
       errors.push(`${rowIndex + 2}행에 question_id가 없습니다.`);
       return;

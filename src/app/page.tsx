@@ -2,11 +2,11 @@ import Link from "next/link";
 import { restoreDemoAction } from "@/lib/actions";
 import { DecisionStamp } from "@/components/decision-stamp";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { cn } from "cn";
+import { cn } from "@/lib/utils";
 import { formatWhen, shortHash } from "@/lib/format";
 import { collectionLabel, decisionLabel, documentTitle } from "@/lib/labels";
-import { auditChain } from "@/lib/project";
-import { summarize } from "@/lib/summary";
+import { auditChainCached as auditChain } from "@/lib/project";
+import { summarizeCached as summarize } from "@/lib/summary";
 import { readStore } from "@/lib/store";
 
 const steps = [
@@ -18,11 +18,17 @@ const steps = [
   ["확인서", "중대 오류와 최종 해시"],
 ];
 
-export default function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const { error } = await searchParams;
   const projects = readStore().projects;
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-4 py-10">
+      {error ? <p className="text-sm text-destructive">{error.slice(0, 200)}</p> : null}
       <section className="grid gap-8 lg:grid-cols-[1.4fr_0.8fr] lg:items-end">
         <div>
           <p className="text-sm text-muted-foreground">발주처를 위한 AI 챗봇 납품 검수</p>

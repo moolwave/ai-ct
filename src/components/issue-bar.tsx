@@ -43,7 +43,7 @@ export function IssueBar({
         </Button>
       </div>
       {!canIssue ? (
-        <p className="text-sm text-muted-foreground">답변 파일을 가져온 뒤에 확정할 수 있습니다.</p>
+        <p className="text-sm text-muted-foreground">답변 파일을 가져오고 판정 체인이 온전할 때 확정할 수 있습니다.</p>
       ) : null}
       {message ? <p className="text-sm text-destructive">{message}</p> : null}
     </div>

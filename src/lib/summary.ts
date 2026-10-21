@@ -1,3 +1,4 @@
+import { hasMachineHit } from "./rules";
 import type { Defect, Project, Question, Severity, Summary } from "./types";
 
 const SEVERITY_RANK: Record<Severity, number> = {
@@ -18,8 +19,10 @@ function questionMap(project: Project): Map<string, Question> {
 
 export function summarize(project: Project): Summary {
   const questions = questionMap(project);
+  // 문항마다 cases 전체를 훑던 O(n²) 대신 Set으로 한 번에 찾습니다.
+  const answeredIds = new Set(project.cases.map((item) => item.questionId));
   const missingAnswerIds = project.questions
-    .filter((question) => !project.cases.some((item) => item.questionId === question.id))
+    .filter((question) => !answeredIds.has(question.id))
     .map((question) => question.id);
 
   const reviewedCases = project.cases.filter((item) => item.humanVerdict);
@@ -57,6 +60,12 @@ export function summarize(project: Project): Summary {
   const holdoutErrors = holdoutCases.filter((item) => item.humanVerdict === "error").length;
   const holdoutReviewed = holdoutCases.filter((item) => item.humanVerdict).length;
 
+  const criticalDomainCases = project.cases.filter((item) => questions.get(item.questionId)?.criticalDomain);
+  const criticalDomainErrors = criticalDomainCases.filter((item) => item.humanVerdict === "error").length;
+  const criticalDomainOpen = criticalDomainCases.filter(
+    (item) => !item.humanVerdict || item.humanVerdict === "hold" || item.humanVerdict === "unsettled",
+  ).length;
+
   let decision: Summary["decision"];
   if (
     project.questions.length === 0 ||
@@ -65,9 +74,11 @@ export function summarize(project: Project): Summary {
     project.cases.length === 0
   ) {
     decision = "incomplete";
-  } else if (project.failOnCritical && critical > 0) {
+  } else if (critical > 0 && project.failOnCritical) {
     decision = "stop";
-  } else if (holds.length > 0 || unsettled.length > 0) {
+  } else if (critical > 0 || holds.length > 0 || unsettled.length > 0) {
+    // 중대 오류가 있으면 '납품 보류' 설정을 꺼도 '중대 오류 없음'으로 끝나지 않습니다.
+    // 발주처가 직접 결정할 미결 항목으로 남깁니다.
     decision = "pending";
   } else {
     decision = "clear";
@@ -92,8 +103,20 @@ export function summarize(project: Project): Summary {
     holdoutTotal: holdoutCases.length,
     holdoutErrors,
     holdoutReviewed,
-    machineHits: project.cases.filter((item) =>
-      item.findings.some((finding) => finding.kind === "hit"),
-    ).length,
+    machineHits: project.cases.filter((item) => hasMachineHit(item.findings)).length,
+    criticalDomainTotal: criticalDomainCases.length,
+    criticalDomainErrors,
+    criticalDomainOpen,
   };
+}
+
+/** auditChainCached와 같은 방식(WeakMap)으로, 같은 Project 객체의 요약을 다시 계산하지 않습니다. */
+const summaryMemo = new WeakMap<Project, Summary>();
+export function summarizeCached(project: Project): Summary {
+  let summary = summaryMemo.get(project);
+  if (!summary) {
+    summary = summarize(project);
+    summaryMemo.set(project, summary);
+  }
+  return summary;
 }

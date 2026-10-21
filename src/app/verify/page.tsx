@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatWhen } from "@/lib/format";
 import { decisionLabel } from "@/lib/labels";
-import { auditChain } from "@/lib/project";
+import { auditChainCached as auditChain } from "@/lib/project";
 import { readStore } from "@/lib/store";
 
 export default async function VerifyPage({

@@ -96,7 +96,9 @@ export function decisionNote(decision: Decision, critical: number): string {
     case "stop":
       return `사람이 확정한 중대 오류가 ${critical}건입니다. 설정상 중대 오류가 있으면 납품을 보류합니다.`;
     case "pending":
-      return "판단 보류나 기준 불명이 남아 있습니다. 통과율 분모에는 넣지 않습니다.";
+      return critical > 0
+        ? `사람이 확정한 중대 오류가 ${critical}건입니다. '중대 오류 시 납품 보류' 설정이 꺼져 있어 납품 여부는 발주처가 정합니다.`
+        : "판단 보류나 기준 불명이 남아 있습니다. 통과율 분모에는 넣지 않습니다.";
     case "clear":
       return "사람이 확정한 판정 안에 중대 오류가 없습니다. 주요·경미 오류가 있으면 수정 목록에 남아 있습니다.";
   }
